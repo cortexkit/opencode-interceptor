@@ -1,0 +1,32 @@
+{
+    "name": "@cortexkit/opencode-interceptor",
+    "version": "0.0.0",
+    "private": true,
+    "description": "OpenCode plugin scaffold for runtime HTTP interception diagnostics",
+    "type": "module",
+    "packageManager": "bun@1.3.11",
+    "main": "./src/index.ts",
+    "types": "./src/index.ts",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "oc-plugin": [
+        "server"
+    ],
+    "scripts": {
+        "lint": "biome check .",
+        "typecheck": "tsc --noEmit",
+        "test": "bun test",
+        "check": "bun run lint && bun run typecheck && bun test"
+    },
+    "dependencies": {
+        "@opencode-ai/plugin": "^1.4.10"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.4.7",
+        "@opencode-ai/sdk": "^1.4.10",
+        "@types/node": "^22.15.30",
+        "bun-types": "1.3.11",
+        "typescript": "^5.8.3"
+    }
+}
