@@ -1,6 +1,4 @@
-import { INTERCEPT_PROVIDER_ROUTE_DEFINITIONS } from "./constants";
-
-export type InterceptProvider = (typeof INTERCEPT_PROVIDER_ROUTE_DEFINITIONS)[number]["provider"];
+export type InterceptProvider = "anthropic" | "openai" | "generic-llm";
 export type InterceptBodyFormat = "empty" | "json" | "text";
 
 export type InterceptBodyPayload = {
@@ -22,39 +20,57 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function looksLikeAnthropicRequest(value: unknown): value is Record<string, unknown> {
-    if (!isRecord(value)) {
+function hasMessagesArray(
+    value: unknown,
+): value is Record<string, unknown> & { messages: unknown[] } {
+    return isRecord(value) && Array.isArray(value.messages);
+}
+
+function looksLikeAnthropicRequest(value: unknown): boolean {
+    if (!hasMessagesArray(value)) {
         return false;
     }
 
-    return typeof value.model === "string" && Array.isArray(value.messages);
+    return typeof value.model === "string" && value.max_tokens !== undefined;
 }
 
-function normalizeHostname(hostname: string): string {
-    return hostname.trim().toLowerCase().replace(/\.+$/, "");
+function looksLikeOpenAIRequest(value: unknown): boolean {
+    if (!hasMessagesArray(value)) {
+        return false;
+    }
+
+    return (
+        typeof value.model === "string" &&
+        (typeof value.stream === "boolean" || value.stream === undefined)
+    );
 }
 
-export function matchInterceptProvider(method: string, url: URL): InterceptProvider | null {
-    if (method.toUpperCase() !== "POST") {
-        return null;
+function looksLikeGenericLLMRequest(value: unknown): boolean {
+    if (!hasMessagesArray(value)) {
+        return false;
     }
 
-    const normalizedHostname = normalizeHostname(url.hostname);
-
-    for (const definition of INTERCEPT_PROVIDER_ROUTE_DEFINITIONS) {
-        const hostMatched = definition.hostnames.some(
-            (hostname) => normalizeHostname(hostname) === normalizedHostname,
-        );
-        if (!hostMatched) {
-            continue;
-        }
-
-        const pathMatched = definition.pathnames.some((pathname) => pathname === url.pathname);
-        if (pathMatched) {
-            return definition.provider;
-        }
+    const messages = value.messages;
+    if (messages.length === 0) {
+        return true;
     }
 
+    return messages.some(
+        (msg: unknown) =>
+            isRecord(msg) && (typeof msg.role === "string" || typeof msg.content === "string"),
+    );
+}
+
+function detectProviderFromBody(value: unknown): InterceptProvider | null {
+    if (looksLikeAnthropicRequest(value)) {
+        return "anthropic";
+    }
+    if (looksLikeOpenAIRequest(value)) {
+        return "openai";
+    }
+    if (looksLikeGenericLLMRequest(value)) {
+        return "generic-llm";
+    }
     return null;
 }
 
@@ -91,15 +107,14 @@ export function serializeInterceptBodyText(text: string | null | undefined): Int
 export async function matchInterceptRequest(
     request: Request,
 ): Promise<MatchedInterceptRequest | null> {
+    if (request.method.toUpperCase() !== "POST") {
+        return null;
+    }
+
     let url: URL;
     try {
         url = new URL(request.url);
     } catch {
-        return null;
-    }
-
-    const provider = matchInterceptProvider(request.method, url);
-    if (!provider) {
         return null;
     }
 
@@ -110,10 +125,13 @@ export async function matchInterceptRequest(
         return null;
     }
 
-    if (provider === "anthropic") {
-        if (requestBody.format !== "json" || !looksLikeAnthropicRequest(requestBody.value)) {
-            return null;
-        }
+    if (requestBody.format !== "json") {
+        return null;
+    }
+
+    const provider = detectProviderFromBody(requestBody.value);
+    if (!provider) {
+        return null;
     }
 
     return {

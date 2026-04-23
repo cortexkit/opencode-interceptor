@@ -92,8 +92,8 @@ export type InterceptSummary = {
     captures: number;
     totalBytes: number;
     anomalies: number;
-    latestAnomalyPhase: string | null;
-    latestAnomalyMessage: string | null;
+    latestErrorPhase: string | null;
+    latestErrorMessage: string | null;
 };
 
 export type InterceptCommandResult = {
@@ -127,7 +127,10 @@ export type DumpTrio = {
     requestPath: string;
     responsePath: string;
     metaPath: string;
-    requestPayload: Record<string, unknown>;
+    requestPayload: {
+        body: unknown;
+        headers: Record<string, string>;
+    };
     responsePayload: DumpResponsePayload;
     metaPayload: DumpMetaPayload;
 };
@@ -621,9 +624,9 @@ export function parseInterceptSummary(summary: string): InterceptSummary {
     const dumpRootMatch = summary.match(/- Dump root: (.+)/);
     const capturesMatch = summary.match(/- Captures: (\d+)/);
     const totalBytesMatch = summary.match(/- Total bytes: (\d+)/);
-    const anomaliesMatch = summary.match(/- Anomalies: (\d+)/);
-    const latestAnomalyPhaseMatch = summary.match(/- Latest anomaly phase: (.+)/);
-    const latestAnomalyMessageMatch = summary.match(/- Latest anomaly message: (.+)/);
+    const anomaliesMatch = summary.match(/- Errors: (\d+)/);
+    const latestErrorPhaseMatch = summary.match(/- Latest error phase: (.+)/);
+    const latestErrorMessageMatch = summary.match(/- Latest error message: (.+)/);
 
     if (!enabledMatch || !dumpRootMatch || !capturesMatch || !totalBytesMatch) {
         throw new Error(`Malformed /intercept summary payload:\n${summary}`);
@@ -635,13 +638,13 @@ export function parseInterceptSummary(summary: string): InterceptSummary {
         captures: Number(capturesMatch[1]),
         totalBytes: Number(totalBytesMatch[1]),
         anomalies: anomaliesMatch ? Number(anomaliesMatch[1]) : 0,
-        latestAnomalyPhase:
-            latestAnomalyPhaseMatch && latestAnomalyPhaseMatch[1].trim() !== "none"
-                ? latestAnomalyPhaseMatch[1].trim()
+        latestErrorPhase:
+            latestErrorPhaseMatch && latestErrorPhaseMatch[1].trim() !== "none"
+                ? latestErrorPhaseMatch[1].trim()
                 : null,
-        latestAnomalyMessage:
-            latestAnomalyMessageMatch && latestAnomalyMessageMatch[1].trim() !== "none"
-                ? latestAnomalyMessageMatch[1].trim()
+        latestErrorMessage:
+            latestErrorMessageMatch && latestErrorMessageMatch[1].trim() !== "none"
+                ? latestErrorMessageMatch[1].trim()
                 : null,
     };
 }
@@ -760,13 +763,10 @@ export function collectDumpTrios(
                 requestPath: trio.request.relativePath,
                 responsePath: trio.response.relativePath,
                 metaPath: trio.meta.relativePath,
-                requestPayload: parseInspectionJson<Record<string, unknown>>(
-                    trio.request.content,
-                    trio.request.relativePath,
-                    label,
-                    summary,
-                    inspection,
-                ),
+                requestPayload: parseInspectionJson<{
+                    body: unknown;
+                    headers: Record<string, string>;
+                }>(trio.request.content, trio.request.relativePath, label, summary, inspection),
                 responsePayload: parseInspectionJson<DumpResponsePayload>(
                     trio.response.content,
                     trio.response.relativePath,

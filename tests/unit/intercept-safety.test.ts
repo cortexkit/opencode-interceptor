@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { matchInterceptRequest, serializeInterceptBodyText } from "../../src/intercept/matcher";
 import {
-    matchInterceptProvider,
-    matchInterceptRequest,
-    serializeInterceptBodyText,
-} from "../../src/intercept/matcher";
-import { INTERCEPT_REDACTED_VALUE, scrubInterceptJsonValue } from "../../src/intercept/redact";
+    INTERCEPT_REDACTED_VALUE,
+    scrubInterceptHeaders,
+    scrubInterceptJsonValue,
+} from "../../src/intercept/redact";
 
 function buildAnthropicBody(extra: Record<string, unknown> = {}) {
     return {
@@ -15,39 +15,75 @@ function buildAnthropicBody(extra: Record<string, unknown> = {}) {
     };
 }
 
+function buildOpenAIBody(extra: Record<string, unknown> = {}) {
+    return {
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hello" }],
+        stream: true,
+        ...extra,
+    };
+}
+
+function buildGenericLLMBody(extra: Record<string, unknown> = {}) {
+    return {
+        messages: [{ role: "user", content: "hello" }],
+        ...extra,
+    };
+}
+
 describe("intercept safety guards", () => {
-    test("curated host and path pairs match deny-by-default", () => {
-        expect(
-            matchInterceptProvider("POST", new URL("https://api.anthropic.com/v1/messages")),
-        ).toBe("anthropic");
-        expect(matchInterceptProvider("POST", new URL("http://127.0.0.1:4010/messages"))).toBe(
-            "anthropic",
-        );
-        expect(matchInterceptProvider("POST", new URL("http://localhost:4010/v1/messages"))).toBe(
-            "anthropic",
-        );
-        expect(matchInterceptProvider("POST", new URL("http://[::1]:4010/v1/messages"))).toBe(
-            "anthropic",
+    test("shape-based detection matches anthropic requests by body structure", async () => {
+        const body = buildAnthropicBody();
+        const matched = await matchInterceptRequest(
+            new Request("https://any-proxy.example.com/v1/chat", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(body),
+            }),
         );
 
-        expect(
-            matchInterceptProvider("GET", new URL("https://api.anthropic.com/v1/messages")),
-        ).toBeNull();
-        expect(
-            matchInterceptProvider("POST", new URL("https://api.anthropic.com/chat/completions")),
-        ).toBeNull();
-        expect(
-            matchInterceptProvider("POST", new URL("https://example.com/v1/messages")),
-        ).toBeNull();
-        expect(
-            matchInterceptProvider(
-                "POST",
-                new URL("https://api.anthropic.com.evil.test/v1/messages"),
+        expect(matched).not.toBeNull();
+        expect(matched?.provider).toBe("anthropic");
+    });
+
+    test("shape-based detection matches openai requests by body structure", async () => {
+        const body = buildOpenAIBody();
+        const matched = await matchInterceptRequest(
+            new Request("https://any-proxy.example.com/v1/chat", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(body),
+            }),
+        );
+
+        expect(matched).not.toBeNull();
+        expect(matched?.provider).toBe("openai");
+    });
+
+    test("shape-based detection matches generic llm requests by messages array", async () => {
+        const body = buildGenericLLMBody();
+        const matched = await matchInterceptRequest(
+            new Request("https://any-proxy.example.com/v1/chat", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(body),
+            }),
+        );
+
+        expect(matched).not.toBeNull();
+        expect(matched?.provider).toBe("generic-llm");
+    });
+
+    test("non-POST methods never match", async () => {
+        await expect(
+            matchInterceptRequest(
+                new Request("https://api.anthropic.com/v1/messages", {
+                    method: "GET",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify(buildAnthropicBody()),
+                }),
             ),
-        ).toBeNull();
-        expect(
-            matchInterceptProvider("POST", new URL("https://api.openai.com/v1/messages")),
-        ).toBeNull();
+        ).resolves.toBeNull();
     });
 
     test("malformed, empty, text, and shape-mismatched bodies never produce a capture match", async () => {
@@ -96,7 +132,7 @@ describe("intercept safety guards", () => {
                 new Request("https://example.com/v1/messages", {
                     method: "POST",
                     headers: { "content-type": "application/json" },
-                    body: JSON.stringify(buildAnthropicBody()),
+                    body: JSON.stringify({ some_field: "value" }),
                 }),
             ),
         ).resolves.toBeNull();
@@ -176,6 +212,26 @@ describe("intercept safety guards", () => {
                     secret_note: INTERCEPT_REDACTED_VALUE,
                 },
             ],
+        });
+    });
+
+    test("header scrubber redacts secret headers and preserves safe ones", () => {
+        const headers = new Headers({
+            "content-type": "application/json",
+            authorization: "Bearer secret-token",
+            "x-api-key": "secret-key",
+            "x-custom-header": "visible-value",
+            cookie: "session=secret-session",
+        });
+
+        const scrubbed = scrubInterceptHeaders(headers);
+
+        expect(scrubbed).toEqual({
+            "content-type": "application/json",
+            authorization: INTERCEPT_REDACTED_VALUE,
+            "x-api-key": INTERCEPT_REDACTED_VALUE,
+            "x-custom-header": "visible-value",
+            cookie: INTERCEPT_REDACTED_VALUE,
         });
     });
 

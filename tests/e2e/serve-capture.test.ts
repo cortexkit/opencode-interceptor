@@ -83,8 +83,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
         expect(statusAfterPrompt.parsed.captures).toBe(0);
         expect(statusAfterPrompt.parsed.totalBytes).toBe(0);
         expect(statusAfterPrompt.parsed.anomalies).toBe(0);
-        expect(statusAfterPrompt.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterPrompt.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterPrompt.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterPrompt.parsed.latestErrorMessage).toBeNull();
         expect(JSON.stringify(harness.modelRequests(), null, 2)).toContain("say hello briefly");
     }, 45_000);
 
@@ -101,8 +101,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
 
         expect(statusAfterStartup.parsed.dumpRoot).toContain(`${INTERCEPT_DUMP_ROOT}/`);
         expect(statusAfterStartup.parsed.anomalies).toBe(0);
-        expect(statusAfterStartup.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterStartup.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterStartup.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterStartup.parsed.latestErrorMessage).toBeNull();
         expect(existsSync(fixture.expiredDir)).toBe(false);
         expect(existsSync(fixture.freshDir)).toBe(true);
 
@@ -132,8 +132,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
         expect(statusAfterPrompt.parsed.enabled).toBe(true);
         expect(statusAfterPrompt.parsed.captures).toBe(trios.length);
         expect(statusAfterPrompt.parsed.anomalies).toBe(0);
-        expect(statusAfterPrompt.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterPrompt.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterPrompt.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterPrompt.parsed.latestErrorMessage).toBeNull();
     }, 45_000);
 
     test("enabled mode writes replay-text dump trios and disable prevents new trios on later prompts", async () => {
@@ -172,8 +172,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
         expect(statusAfterEnabledPrompt.parsed.captures).toBe(enabledTrios.length);
         expect(statusAfterEnabledPrompt.parsed.totalBytes).toBe(enabledTotalBytes);
         expect(statusAfterEnabledPrompt.parsed.anomalies).toBe(0);
-        expect(statusAfterEnabledPrompt.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterEnabledPrompt.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterEnabledPrompt.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterEnabledPrompt.parsed.latestErrorMessage).toBeNull();
 
         for (const [index, trio] of enabledTrios.entries()) {
             const expectedPrefix = `${String(index + 1).padStart(3, "0")}-anthropic-`;
@@ -181,8 +181,9 @@ describe("opencode serve capture hardening and negative regressions", () => {
             expect(trio.requestPath).toBe(`${trio.basename}.request.json`);
             expect(trio.responsePath).toBe(`${trio.basename}.response.json`);
             expect(trio.metaPath).toBe(`${trio.basename}.meta.json`);
-            expect(trio.requestPayload.model).toBe("mock-sonnet");
-            expect(Array.isArray(trio.requestPayload.messages)).toBe(true);
+            const requestBody = trio.requestPayload.body as Record<string, unknown>;
+            expect(requestBody.model).toBe("mock-sonnet");
+            expect(Array.isArray(requestBody.messages)).toBe(true);
             expect(trio.responsePayload.status).toBe(200);
             expect(trio.responsePayload.bodyFormat).toBe("replay-text");
             expect(trio.responsePayload.bodyReadError).toBeNull();
@@ -234,8 +235,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
         expect(statusAfterDisabledPrompt.parsed.captures).toBe(enabledTrios.length);
         expect(statusAfterDisabledPrompt.parsed.totalBytes).toBe(enabledTotalBytes);
         expect(statusAfterDisabledPrompt.parsed.anomalies).toBe(0);
-        expect(statusAfterDisabledPrompt.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterDisabledPrompt.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterDisabledPrompt.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterDisabledPrompt.parsed.latestErrorMessage).toBeNull();
         expect(disabledTrios).toEqual(enabledTrios);
     }, 45_000);
 
@@ -270,8 +271,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
 
         expect(statusAfterHttpError.parsed.captures).toBeGreaterThanOrEqual(1);
         expect(statusAfterHttpError.parsed.anomalies).toBe(0);
-        expect(statusAfterHttpError.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterHttpError.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterHttpError.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterHttpError.parsed.latestErrorMessage).toBeNull();
         expect(latestTrio).toBeDefined();
         expect(latestTrio?.responsePayload.status).toBe(503);
         expect(latestTrio?.responsePayload.bodyFormat).toBe("json");
@@ -372,8 +373,8 @@ describe("opencode serve capture hardening and negative regressions", () => {
         expect(failure?.message).toContain("--- stderr ---");
         expect(statusAfterMalformedPrompt.parsed.captures).toBeGreaterThanOrEqual(1);
         expect(statusAfterMalformedPrompt.parsed.anomalies).toBeGreaterThanOrEqual(1);
-        expect(statusAfterMalformedPrompt.parsed.latestAnomalyPhase).toBe("capture/response-parse");
-        expect(statusAfterMalformedPrompt.parsed.latestAnomalyMessage).toContain(
+        expect(statusAfterMalformedPrompt.parsed.latestErrorPhase).toBe("capture/response-parse");
+        expect(statusAfterMalformedPrompt.parsed.latestErrorMessage).toContain(
             "event stream frame data was not valid JSON",
         );
         expect(latestTrio).toBeDefined();

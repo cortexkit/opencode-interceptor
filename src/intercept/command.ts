@@ -41,9 +41,9 @@ export function buildInterceptStatusSummary(sessionId?: string | null): string {
         `- Dump root: ${getInterceptDumpRoot(sessionId)}`,
         `- Captures: ${snapshot.captureCount}`,
         `- Total bytes: ${snapshot.totalBytes}`,
-        `- Anomalies: ${snapshot.anomalyCount}`,
-        `- Latest anomaly phase: ${latestAnomalyPhase}`,
-        `- Latest anomaly message: ${latestAnomalyMessage}`,
+        `- Errors: ${snapshot.anomalyCount}`,
+        `- Latest error phase: ${latestAnomalyPhase}`,
+        `- Latest error message: ${latestAnomalyMessage}`,
     ].join("\n");
 }
 

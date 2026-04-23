@@ -16,7 +16,7 @@ The plugin installs a single long-lived `globalThis.fetch` wrapper when it loads
 
 ### Matching and persistence
 
-When interception is enabled, only curated provider traffic is captured. The current table is intentionally deny-by-default and matches Anthropic-style `POST /messages` / `POST /v1/messages` traffic on the curated host list used by the tests.
+When interception is enabled, LLM provider traffic is detected by request body shape rather than URL. Any `POST` request with a JSON body containing a `messages` array is captured. The plugin distinguishes between Anthropic, OpenAI, and generic LLM request shapes.
 
 Matching captures are written under temp storage only:
 
@@ -38,7 +38,7 @@ Persisted artifacts are intentionally safe-by-default:
 - response JSON bodies, including HTTP-error payloads, are scrubbed through the same recursive redactor
 - streamed SSE responses are persisted only as replay-friendly assistant text, not raw `event:` / `data:` frame payloads
 - unsafe plain-text bodies are omitted instead of being written raw
-- request headers are never persisted
+- request headers are persisted with best-effort redaction (`authorization`, `x-api-key`, `cookie`, etc. are replaced with `[REDACTED]`)
 
 ### Startup retention cleanup
 
@@ -110,12 +110,24 @@ When the body is omitted or unreadable, the dump tells the truth through `bodyOm
    bun install
    ```
 
-2. Add this plugin to your local OpenCode config as a file URL that points at this repo's entrypoint:
+2. Add this plugin to your local OpenCode config as a file URL that points at this repo's entrypoint.
+
+   Either load the TypeScript source directly (Bun compiles it at runtime — no build step needed for local dev):
 
    ```json
    {
      "plugin": [
        "file:///absolute/path/to/opencode-interceptor/src/index.ts"
+     ]
+   }
+   ```
+
+   Or, after running `bun run build`, load the compiled ESM bundle:
+
+   ```json
+   {
+     "plugin": [
+       "file:///absolute/path/to/opencode-interceptor/dist/index.js"
      ]
    }
    ```

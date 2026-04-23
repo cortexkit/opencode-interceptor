@@ -5,7 +5,7 @@ import {
     writeInterceptDumpTrio,
 } from "./dump";
 import { matchInterceptRequest } from "./matcher";
-import { scrubInterceptJsonValue } from "./redact";
+import { scrubInterceptHeaders, scrubInterceptJsonValue } from "./redact";
 import {
     allocateInterceptSequence,
     getActiveInterceptSessionId,
@@ -17,6 +17,8 @@ import {
     registerInterceptFetchWrapper,
     resolveInterceptSessionId,
 } from "./state";
+
+export const INTERCEPT_MAX_RESPONSE_CAPTURE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 export type InterceptFetchOptions = {
     now?: () => number;
@@ -94,6 +96,7 @@ function extractReplayTextFromEventPayload(payload: unknown): string[] {
         return [];
     }
 
+    // Anthropic streaming format
     if (
         payload.type === "content_block_start" &&
         isRecord(payload.content_block) &&
@@ -110,6 +113,16 @@ function extractReplayTextFromEventPayload(payload: unknown): string[] {
         typeof payload.delta.text === "string"
     ) {
         return [payload.delta.text];
+    }
+
+    // OpenAI streaming format
+    if (Array.isArray(payload.choices) && payload.choices.length > 0) {
+        const firstChoice = payload.choices[0];
+        if (isRecord(firstChoice) && isRecord(firstChoice.delta)) {
+            if (typeof firstChoice.delta.content === "string") {
+                return [firstChoice.delta.content];
+            }
+        }
     }
 
     return [];
@@ -183,6 +196,29 @@ async function serializeInterceptResponse(response: Response): Promise<{
 }> {
     const contentType = response.headers.get("content-type");
     const normalizedContentType = normalizeContentType(contentType);
+
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) {
+        const parsedLength = Number.parseInt(contentLength, 10);
+        if (!Number.isNaN(parsedLength) && parsedLength > INTERCEPT_MAX_RESPONSE_CAPTURE_BYTES) {
+            return {
+                contentType,
+                responseBytes: parsedLength,
+                responsePayload: {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: null,
+                    bodyFormat: "omitted",
+                    bodyReadError: null,
+                    bodyOmittedReason: "response-too-large",
+                },
+                anomaly: {
+                    phase: "response-size",
+                    message: `Response body ${parsedLength} bytes exceeds max capture size ${INTERCEPT_MAX_RESPONSE_CAPTURE_BYTES} bytes`,
+                },
+            };
+        }
+    }
 
     let bodyText: string;
     try {
@@ -363,10 +399,15 @@ export function createInterceptFetchWrapper(
                 timestamp: metaPayload.timestamp,
             });
 
+            const requestPayload = {
+                body: scrubInterceptJsonValue(matchedRequest.requestBody.value),
+                headers: scrubInterceptHeaders(request.headers),
+            };
+
             await writeDumpTrio({
                 root: dumpRoot,
                 basename,
-                requestPayload: scrubInterceptJsonValue(matchedRequest.requestBody.value),
+                requestPayload,
                 responsePayload,
                 metaPayload,
             });

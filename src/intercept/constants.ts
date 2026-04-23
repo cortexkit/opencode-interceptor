@@ -17,11 +17,3 @@ export const INTERCEPT_CAPTURE_SEQUENCE_PAD = 3;
 export const INTERCEPT_REQUEST_FILE_SUFFIX = ".request.json";
 export const INTERCEPT_RESPONSE_FILE_SUFFIX = ".response.json";
 export const INTERCEPT_META_FILE_SUFFIX = ".meta.json";
-
-export const INTERCEPT_PROVIDER_ROUTE_DEFINITIONS = [
-    {
-        provider: "anthropic",
-        hostnames: ["api.anthropic.com", "127.0.0.1", "localhost", "[::1]"],
-        pathnames: ["/messages", "/v1/messages"],
-    },
-] as const;

@@ -63,8 +63,8 @@ describe("opencode serve milestone toggle proof via the real runtime harness", (
         expect(initialStatus.parsed.captures).toBe(0);
         expect(initialStatus.parsed.totalBytes).toBe(0);
         expect(initialStatus.parsed.anomalies).toBe(0);
-        expect(initialStatus.parsed.latestAnomalyPhase).toBeNull();
-        expect(initialStatus.parsed.latestAnomalyMessage).toBeNull();
+        expect(initialStatus.parsed.latestErrorPhase).toBeNull();
+        expect(initialStatus.parsed.latestErrorMessage).toBeNull();
 
         const disabledBeforeEnablePrompt = await harness.sendPrompt(
             sessionId,
@@ -88,8 +88,8 @@ describe("opencode serve milestone toggle proof via the real runtime harness", (
         expect(statusAfterDisabledBeforeEnable.parsed.enabled).toBe(false);
         expect(statusAfterDisabledBeforeEnable.parsed.dumpRoot).toBe(initialStatus.parsed.dumpRoot);
         expect(statusAfterDisabledBeforeEnable.parsed.anomalies).toBe(0);
-        expect(statusAfterDisabledBeforeEnable.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterDisabledBeforeEnable.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterDisabledBeforeEnable.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterDisabledBeforeEnable.parsed.latestErrorMessage).toBeNull();
         assertNoDumpGrowth(
             "disabled-before-enable",
             statusAfterDisabledBeforeEnable,
@@ -151,8 +151,8 @@ describe("opencode serve milestone toggle proof via the real runtime harness", (
         expect(statusAfterEnabledPrompt.parsed.captures).toBe(enabledTrios.length);
         expect(statusAfterEnabledPrompt.parsed.totalBytes).toBe(enabledTotalBytes);
         expect(statusAfterEnabledPrompt.parsed.anomalies).toBe(0);
-        expect(statusAfterEnabledPrompt.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterEnabledPrompt.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterEnabledPrompt.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterEnabledPrompt.parsed.latestErrorMessage).toBeNull();
 
         for (const [index, trio] of enabledTrios.entries()) {
             const expectedPrefix = `${String(index + 1).padStart(3, "0")}-anthropic-`;
@@ -160,8 +160,9 @@ describe("opencode serve milestone toggle proof via the real runtime harness", (
             expect(trio.requestPath).toBe(`${trio.basename}.request.json`);
             expect(trio.responsePath).toBe(`${trio.basename}.response.json`);
             expect(trio.metaPath).toBe(`${trio.basename}.meta.json`);
-            expect(trio.requestPayload.model).toBe("mock-sonnet");
-            expect(Array.isArray(trio.requestPayload.messages)).toBe(true);
+            const requestBody = trio.requestPayload.body as Record<string, unknown>;
+            expect(requestBody.model).toBe("mock-sonnet");
+            expect(Array.isArray(requestBody.messages)).toBe(true);
             expect(trio.responsePayload.status).toBe(200);
             expect(trio.responsePayload.bodyFormat).toBe("replay-text");
             expect(trio.responsePayload.bodyReadError).toBeNull();
@@ -193,8 +194,8 @@ describe("opencode serve milestone toggle proof via the real runtime harness", (
         expect(disableReply.parsed.captures).toBe(enabledTrios.length);
         expect(disableReply.parsed.totalBytes).toBe(enabledTotalBytes);
         expect(disableReply.parsed.anomalies).toBe(0);
-        expect(disableReply.parsed.latestAnomalyPhase).toBeNull();
-        expect(disableReply.parsed.latestAnomalyMessage).toBeNull();
+        expect(disableReply.parsed.latestErrorPhase).toBeNull();
+        expect(disableReply.parsed.latestErrorMessage).toBeNull();
 
         const disabledAfterEnablePrompt = await harness.sendPrompt(
             sessionId,
@@ -225,8 +226,8 @@ describe("opencode serve milestone toggle proof via the real runtime harness", (
         expect(statusAfterDisabledAfterEnable.parsed.captures).toBe(enabledTrios.length);
         expect(statusAfterDisabledAfterEnable.parsed.totalBytes).toBe(enabledTotalBytes);
         expect(statusAfterDisabledAfterEnable.parsed.anomalies).toBe(0);
-        expect(statusAfterDisabledAfterEnable.parsed.latestAnomalyPhase).toBeNull();
-        expect(statusAfterDisabledAfterEnable.parsed.latestAnomalyMessage).toBeNull();
+        expect(statusAfterDisabledAfterEnable.parsed.latestErrorPhase).toBeNull();
+        expect(statusAfterDisabledAfterEnable.parsed.latestErrorMessage).toBeNull();
         if (JSON.stringify(disabledAfterEnableTrios) !== JSON.stringify(enabledTrios)) {
             throw new Error(
                 [

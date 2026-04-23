@@ -182,7 +182,8 @@ describe("fetch interception core", () => {
         const firstMeta = readJson(`${sessionRoot}/${firstBase}.meta.json`);
         const secondMeta = readJson(`${sessionRoot}/${secondBase}.meta.json`);
 
-        expect(firstRequest).toEqual(buildAnthropicBody("first"));
+        expect(firstRequest.body).toEqual(buildAnthropicBody("first"));
+        expect(firstRequest.headers).toEqual({ "content-type": "application/json" });
         expect(firstResponse.status).toBe(200);
         expect(firstResponse.body).toEqual(responses[0]);
         expect(firstResponse.bodyFormat).toBe("json");
@@ -433,7 +434,11 @@ describe("fetch interception core", () => {
         setActiveInterceptSession("unit-fail-open");
         setInterceptEnabled(true);
 
-        await globalThis.fetch("http://127.0.0.1:4010/health", buildAnthropicInit("miss"));
+        await globalThis.fetch("http://127.0.0.1:4010/health", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action: "health-check" }),
+        });
         await globalThis.fetch("http://127.0.0.1:4010/v1/messages", { method: "GET" });
         await globalThis.fetch("://bad-url", buildAnthropicInit("broken"));
         await globalThis.fetch("http://127.0.0.1:4010/v1/messages", {
@@ -501,7 +506,7 @@ describe("fetch interception core", () => {
         const requestDump = readJson(`${sessionRoot}/${base}.request.json`);
         const metaDump = readJson(`${sessionRoot}/${base}.meta.json`);
 
-        expect(requestDump).toEqual({
+        expect(requestDump.body).toEqual({
             model: "mock-sonnet",
             messages: [{ role: "user", content: "secret prompt" }],
             max_tokens: 64,
@@ -521,11 +526,14 @@ describe("fetch interception core", () => {
                 },
             ],
         });
+        expect(requestDump.headers).toEqual({
+            "content-type": "application/json",
+            authorization: INTERCEPT_REDACTED_VALUE,
+        });
         expect(JSON.stringify(requestDump)).not.toContain("req-secret-value");
         expect(JSON.stringify(requestDump)).not.toContain("nested-token");
         expect(JSON.stringify(requestDump)).not.toContain("hidden-password");
         expect(JSON.stringify(requestDump)).not.toContain("header-secret");
-        expect(requestDump.headers).toBeUndefined();
         expect(metaDump.requestBytes).toBe(Buffer.byteLength(JSON.stringify(requestBody)));
     });
 
@@ -687,5 +695,117 @@ describe("fetch interception core", () => {
                 timestamp: "2026-04-19T06:15:00.123Z",
             }),
         ).toBe("007-anthropic-2026-04-19T06-15-00-123Z");
+    });
+
+    test("openai sse streams extract delta content into replay text", async () => {
+        const sessionId = "unit-openai-stream";
+        const sessionRoot = getInterceptDumpRoot(sessionId);
+        cleanupPath(sessionRoot);
+        rmSync(sessionRoot, { recursive: true, force: true });
+
+        const responseText = [
+            'data: {"choices":[{"delta":{"content":"Hello"}}]}',
+            "",
+            'data: {"choices":[{"delta":{"content":" world"}}]}',
+            "",
+            "data: [DONE]",
+            "",
+        ].join("\n");
+
+        globalThis.fetch = toMockFetch(async () => {
+            return new Response(responseText, {
+                status: 200,
+                headers: {
+                    "content-type": "text/event-stream",
+                },
+            });
+        });
+
+        installInterceptFetch({
+            now: () => 0,
+            timestamp: () => "2026-04-19T06:11:00.000Z",
+        });
+        setActiveInterceptSession(sessionId);
+        setInterceptEnabled(true);
+
+        const response = await globalThis.fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+                model: "gpt-4",
+                messages: [{ role: "user", content: "hello" }],
+                stream: true,
+            }),
+        });
+        const filenames = (await readdir(sessionRoot)).sort();
+        const base = filenames[0].replace(/\.(request|response|meta)\.json$/, "");
+        const responseDump = readJson(`${sessionRoot}/${base}.response.json`);
+        const metaDump = readJson(`${sessionRoot}/${base}.meta.json`);
+
+        expect(response.status).toBe(200);
+        expect(await response.text()).toBe(responseText);
+        expect(responseDump).toEqual({
+            status: 200,
+            statusText: "",
+            body: "Hello world",
+            bodyFormat: "replay-text",
+            bodyReadError: null,
+            bodyOmittedReason: null,
+        });
+        expect(metaDump.responseBytes).toBe(Buffer.byteLength(responseText));
+        expect(getInterceptStateSnapshot().captureCount).toBe(1);
+        expect(getInterceptStateSnapshot().anomalyCount).toBe(0);
+    });
+
+    test("responses exceeding max size are omitted with anomaly", async () => {
+        const sessionId = "unit-oversized";
+        const sessionRoot = getInterceptDumpRoot(sessionId);
+        cleanupPath(sessionRoot);
+        rmSync(sessionRoot, { recursive: true, force: true });
+
+        const largeBody = "x".repeat(11 * 1024 * 1024); // 11 MB
+
+        globalThis.fetch = toMockFetch(async () => {
+            return new Response(largeBody, {
+                status: 200,
+                headers: {
+                    "content-type": "application/json",
+                    "content-length": String(Buffer.byteLength(largeBody)),
+                },
+            });
+        });
+
+        installInterceptFetch({
+            now: () => 0,
+            timestamp: () => "2026-04-19T06:11:00.000Z",
+        });
+        setActiveInterceptSession(sessionId);
+        setInterceptEnabled(true);
+
+        const response = await globalThis.fetch(
+            "http://127.0.0.1:4010/v1/messages",
+            buildAnthropicInit("oversized"),
+        );
+        const filenames = (await readdir(sessionRoot)).sort();
+        const base = filenames[0].replace(/\.(request|response|meta)\.json$/, "");
+        const responseDump = readJson(`${sessionRoot}/${base}.response.json`);
+        const metaDump = readJson(`${sessionRoot}/${base}.meta.json`);
+
+        expect(response.status).toBe(200);
+        expect(responseDump).toEqual({
+            status: 200,
+            statusText: "",
+            body: null,
+            bodyFormat: "omitted",
+            bodyReadError: null,
+            bodyOmittedReason: "response-too-large",
+        });
+        expect(metaDump.responseBytes).toBe(Buffer.byteLength(largeBody));
+        expect(getInterceptStateSnapshot().captureCount).toBe(1);
+        expect(getInterceptStateSnapshot().anomalyCount).toBe(1);
+        expect(getInterceptStateSnapshot().latestAnomaly?.phase).toBe("response-size");
+        expect(getInterceptStateSnapshot().latestAnomaly?.message).toContain(
+            "exceeds max capture size",
+        );
     });
 });

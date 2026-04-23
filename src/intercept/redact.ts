@@ -86,3 +86,24 @@ function scrubInterceptJsonValueInternal(value: unknown, seen: WeakSet<object>):
 export function scrubInterceptJsonValue(value: unknown): unknown {
     return scrubInterceptJsonValueInternal(value, new WeakSet<object>());
 }
+
+const INTERCEPT_SECRET_HEADER_NAMES = new Set([
+    "authorization",
+    "x-api-key",
+    "api-key",
+    "x-auth-token",
+    "cookie",
+]);
+
+function isInterceptSecretHeader(name: string): boolean {
+    const normalized = name.trim().toLowerCase();
+    return INTERCEPT_SECRET_HEADER_NAMES.has(normalized) || isInterceptSecretKey(normalized);
+}
+
+export function scrubInterceptHeaders(headers: Headers): Record<string, string> {
+    const result: Record<string, string> = {};
+    headers.forEach((value, key) => {
+        result[key] = isInterceptSecretHeader(key) ? INTERCEPT_REDACTED_VALUE : value;
+    });
+    return result;
+}

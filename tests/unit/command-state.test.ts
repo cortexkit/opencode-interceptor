@@ -16,9 +16,9 @@ function parseSummary(summary: string) {
     const dumpRootMatch = summary.match(/- Dump root: (.+)/);
     const capturesMatch = summary.match(/- Captures: (\d+)/);
     const totalBytesMatch = summary.match(/- Total bytes: (\d+)/);
-    const anomaliesMatch = summary.match(/- Anomalies: (\d+)/);
-    const latestAnomalyPhaseMatch = summary.match(/- Latest anomaly phase: (.+)/);
-    const latestAnomalyMessageMatch = summary.match(/- Latest anomaly message: (.+)/);
+    const anomaliesMatch = summary.match(/- Errors: (\d+)/);
+    const latestErrorPhaseMatch = summary.match(/- Latest error phase: (.+)/);
+    const latestErrorMessageMatch = summary.match(/- Latest error message: (.+)/);
 
     if (
         !enabledMatch ||
@@ -26,8 +26,8 @@ function parseSummary(summary: string) {
         !capturesMatch ||
         !totalBytesMatch ||
         !anomaliesMatch ||
-        !latestAnomalyPhaseMatch ||
-        !latestAnomalyMessageMatch
+        !latestErrorPhaseMatch ||
+        !latestErrorMessageMatch
     ) {
         throw new Error(`Malformed summary:\n${summary}`);
     }
@@ -38,8 +38,8 @@ function parseSummary(summary: string) {
         captures: Number(capturesMatch[1]),
         totalBytes: Number(totalBytesMatch[1]),
         anomalies: Number(anomaliesMatch[1]),
-        latestAnomalyPhase: latestAnomalyPhaseMatch[1].trim(),
-        latestAnomalyMessage: latestAnomalyMessageMatch[1].trim(),
+        latestErrorPhase: latestErrorPhaseMatch[1].trim(),
+        latestErrorMessage: latestErrorMessageMatch[1].trim(),
     };
 }
 
@@ -56,8 +56,8 @@ describe("intercept command state", () => {
         expect(parsed.captures).toBe(0);
         expect(parsed.totalBytes).toBe(0);
         expect(parsed.anomalies).toBe(0);
-        expect(parsed.latestAnomalyPhase).toBe("none");
-        expect(parsed.latestAnomalyMessage).toBe("none");
+        expect(parsed.latestErrorPhase).toBe("none");
+        expect(parsed.latestErrorMessage).toBe("none");
         expect(parsed.dumpRoot).toEndWith(`/opencode-interceptor/${UNKNOWN_SESSION_ID}`);
     });
 
@@ -141,8 +141,8 @@ describe("intercept command state", () => {
         const parsed = parseSummary(summary);
 
         expect(parsed.anomalies).toBe(1);
-        expect(parsed.latestAnomalyPhase).toBe("capture/response-parse");
-        expect(parsed.latestAnomalyMessage).toBe("event stream frame data was not valid JSON");
+        expect(parsed.latestErrorPhase).toBe("capture/response-parse");
+        expect(parsed.latestErrorMessage).toBe("event stream frame data was not valid JSON");
         expect(getInterceptStateSnapshot().latestAnomaly).toMatchObject({
             scope: "capture",
             phase: "response-parse",
@@ -160,8 +160,8 @@ describe("intercept command state", () => {
         const parsed = parseSummary(summary);
 
         expect(parsed.anomalies).toBe(1);
-        expect(parsed.latestAnomalyPhase).toBe("cleanup/entry-delete");
-        expect(parsed.latestAnomalyMessage).toBe(
+        expect(parsed.latestErrorPhase).toBe("cleanup/entry-delete");
+        expect(parsed.latestErrorMessage).toBe(
             "Failed to delete expired cleanup entry stale-session: permission denied",
         );
         expect(getInterceptStateSnapshot().latestAnomaly).toMatchObject({
